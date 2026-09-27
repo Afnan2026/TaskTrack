@@ -1,8 +1,8 @@
 import os
 import sqlite3
 import time
-import requests
 import streamlit as st
+import openai
 
 # Page Configuration
 st.set_page_config(page_title="TaskTrack AI", page_icon="📚", layout="centered")
@@ -59,7 +59,7 @@ def update_task_status(task_id, done):
 
 init_db()
 
-# App Styling
+# Custom Styling
 st.markdown("""
 <style>
     .stApp {
@@ -108,65 +108,36 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Session State Initialization
-if "user" not in st.session_state:
-    st.session_state.user = None
+# --- SIMPLE DIRECT LOGIN GATE (NO GOOGLE HASSLE) ---
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
 
-# Query Parameters OAuth Flow
-query_params = st.query_params
-if "code" in query_params and not st.session_state.user:
-    code = query_params["code"]
-    client_id = st.secrets["auth"]["google"]["client_id"]
-    client_secret = st.secrets["auth"]["google"]["client_secret"]
-    redirect_uri = "https://tasktrack-ai.streamlit.app"
-
-    # Exchange Auth Code for Access Token
-    token_url = "https://oauth2.googleapis.com/token"
-    data = {
-        "code": code,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code",
-    }
-    r = requests.post(token_url, data=data)
-    if r.status_code == 200:
-        access_token = r.json().get("access_token")
-        # Fetch User Info
-        user_info = requests.get(
-            "https://www.googleapis.com/oauth2/v2/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"}
-        ).json()
-        st.session_state.user = user_info
-        st.query_params.clear()
-        st.rerun()
-
-# --- LOGIN GATE ---
-if not st.session_state.user:
+if not st.session_state.user_email:
     st.markdown("<div style='text-align: center; font-size: 55px;'>⬛🔲</div>", unsafe_allow_html=True)
     st.markdown("<h1 class='app-title'>TaskTrack AI</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='app-subtitle'>Please sign in to access your saved assignments & tools</p>",
+    st.markdown("<p class='app-subtitle'>Enter your name to access your assignments & tools</p>",
                 unsafe_allow_html=True)
 
-    st.markdown("<div class='card' style='text-align: center;'>", unsafe_allow_html=True)
-    st.subheader("Welcome Back! 👋")
-    st.write("Sign in with Google to sync your study schedule and reminders across all devices.")
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.subheader("Welcome! 👋")
 
-    client_id = st.secrets["auth"]["google"]["client_id"]
-    redirect_uri = "https://tasktrack-ai.streamlit.app"
-    auth_link = f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=openid%20email%20profile"
+    name_input = st.text_input("Your Name:", placeholder="e.g. Afnan")
+    email_input = st.text_input("Your Email:", placeholder="e.g. afnan@gmail.com")
 
-    st.markdown(
-        f'<a href="{auth_link}" target="_self"><button style="background: linear-gradient(180deg, #ffb700 0%, #e6a100 100%); color: white; font-weight: bold; border: none; padding: 14px 20px; border-radius: 12px; width: 100%; cursor: pointer; font-size: 1.1rem;">🌐 Sign in with Google</button></a>',
-        unsafe_allow_html=True)
+    if st.button("🚀 Enter TaskTrack"):
+        if name_input and email_input:
+            st.session_state.user_name = name_input
+            st.session_state.user_email = email_input
+            st.rerun()
+        else:
+            st.warning("Please fill in both fields to continue.")
 
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 # --- MAIN DASHBOARD (LOGGED IN USER) ---
-user_info = st.session_state.user
-user_email = user_info.get("email", "student@tasktrack.ai")
-user_name = user_info.get("name", "Student")
+user_email = st.session_state.user_email
+user_name = st.session_state.get("user_name", "Student")
 
 st.markdown("<div style='text-align: center; font-size: 50px;'>⬛🔲</div>", unsafe_allow_html=True)
 st.markdown("<h1 class='app-title'>TaskTrack</h1>", unsafe_allow_html=True)
@@ -178,7 +149,7 @@ with col_usr:
     st.caption(f"Logged in as: `{user_email}`")
 with col_logout:
     if st.button("Log out"):
-        st.session_state.user = None
+        st.session_state.user_email = None
         st.rerun()
 
 if "active_tool" not in st.session_state:
@@ -193,7 +164,6 @@ def query_smarter_ai(prompt_text):
         return
     with st.spinner("🧠 Smart Socratic AI is breaking down your question..."):
         try:
-            import openai
             client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
             response = client.chat.completions.create(
                 model="openrouter/auto",

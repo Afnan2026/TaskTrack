@@ -8,7 +8,7 @@ import openai
 st.set_page_config(page_title="TaskTrack AI", page_icon="📚", layout="centered")
 
 
-# --- DATABASE SETUP (SQLite Persistent Storage) ---
+# --- DATABASE SETUP (Persistent Storage with Dates & Times) ---
 def init_db():
     conn = sqlite3.connect("tasktrack.db")
     c = conn.cursor()
@@ -17,6 +17,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_email TEXT,
             task TEXT,
+            due_date TEXT,
+            due_time TEXT,
             done INTEGER
         )
     ''')
@@ -27,16 +29,17 @@ def init_db():
 def get_user_tasks(email):
     conn = sqlite3.connect("tasktrack.db")
     c = conn.cursor()
-    c.execute("SELECT id, task, done FROM user_reminders WHERE user_email = ?", (email,))
+    c.execute("SELECT id, task, due_date, due_time, done FROM user_reminders WHERE user_email = ?", (email,))
     rows = c.fetchall()
     conn.close()
-    return [{"id": r[0], "task": r[1], "done": bool(r[2])} for r in rows]
+    return [{"id": r[0], "task": r[1], "due_date": r[2], "due_time": r[3], "done": bool(r[4])} for r in rows]
 
 
-def add_user_task(email, task_text):
+def add_user_task(email, task_text, due_date, due_time):
     conn = sqlite3.connect("tasktrack.db")
     c = conn.cursor()
-    c.execute("INSERT INTO user_reminders (user_email, task, done) VALUES (?, ?, 0)", (email, task_text))
+    c.execute("INSERT INTO user_reminders (user_email, task, due_date, due_time, done) VALUES (?, ?, ?, ?, 0)",
+              (email, task_text, str(due_date), str(due_time)))
     conn.commit()
     conn.close()
 
@@ -108,7 +111,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- SIMPLE DIRECT LOGIN GATE (NO GOOGLE HASSLE) ---
+# --- LOGIN GATE ---
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
 
@@ -120,7 +123,6 @@ if not st.session_state.user_email:
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("Welcome! 👋")
-
     name_input = st.text_input("Your Name:", placeholder="e.g. Afnan")
     email_input = st.text_input("Your Email:", placeholder="e.g. afnan@gmail.com")
 
@@ -130,19 +132,17 @@ if not st.session_state.user_email:
             st.session_state.user_email = email_input
             st.rerun()
         else:
-            st.warning("Please fill in both fields to continue.")
-
+            st.warning("Please fill in both fields.")
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
-# --- MAIN DASHBOARD (LOGGED IN USER) ---
+# --- MAIN DASHBOARD ---
 user_email = st.session_state.user_email
 user_name = st.session_state.get("user_name", "Student")
 
 st.markdown("<div style='text-align: center; font-size: 50px;'>⬛🔲</div>", unsafe_allow_html=True)
 st.markdown("<h1 class='app-title'>TaskTrack</h1>", unsafe_allow_html=True)
-st.markdown(f"<p class='app-subtitle'>Welcome, {user_name}! | Let us help you solve your homework</p>",
-            unsafe_allow_html=True)
+st.markdown(f"<p class='app-subtitle'>Welcome, {user_name}! | Your Study Assistant</p>", unsafe_allow_html=True)
 
 col_usr, col_logout = st.columns([3, 1])
 with col_usr:
@@ -160,7 +160,8 @@ if "active_tool" not in st.session_state:
 def query_smarter_ai(prompt_text):
     api_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        st.error("API Key missing! Please configure secrets in Streamlit Cloud.")
+        st.error(
+            "⚠️ OpenRouter API Key missing! Go to Streamlit Cloud -> Settings -> Secrets and add OPENROUTER_API_KEY = 'your_key'.")
         return
     with st.spinner("🧠 Smart Socratic AI is breaking down your question..."):
         try:
@@ -169,7 +170,7 @@ def query_smarter_ai(prompt_text):
                 model="openrouter/auto",
                 messages=[
                     {"role": "system",
-                     "content": "You are an elite Socratic Tutor. Never state direct solutions directly. Break the problem down step-by-step and ask 1-2 guiding questions."},
+                     "content": "You are an elite Socratic Tutor. Never give direct answers right away. Break the problem down step-by-step and ask guiding questions."},
                     {"role": "user", "content": prompt_text}
                 ]
             )
@@ -179,108 +180,92 @@ def query_smarter_ai(prompt_text):
             st.error(f"Error reaching AI service: {e}")
 
 
-st.write("**TaskTrack AI:**")
-col_search, col_btn = st.columns([3, 1])
-with col_search:
-    user_query = st.text_input("Ask me anything", placeholder="Ask any homework question...",
-                               label_visibility="collapsed")
-with col_btn:
-    if st.button("🔍 search"):
-        if user_query:
-            st.session_state.active_tool = "ai_search"
-
+# Navigation Grid
 st.markdown("<br>", unsafe_allow_html=True)
-
-# 2x2 Tool Grid
-row1_col1, row1_col2 = st.columns(2)
-with row1_col1:
-    if st.button("📷 Camera"):
-        st.session_state.active_tool = "camera"
-with row1_col2:
-    if st.button("⏰ Alarm"):
-        st.session_state.active_tool = "alarm"
-
-row2_col1, row2_col2 = st.columns(2)
-with row2_col1:
-    if st.button("📌 Reminder"):
-        st.session_state.active_tool = "reminder"
-with row2_col2:
-    if st.button("🧠 AI Tutor"):
-        st.session_state.active_tool = "ai_search"
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    if st.button("📷 Camera"): st.session_state.active_tool = "camera"
+with c2:
+    if st.button("⏰ Timer"): st.session_state.active_tool = "alarm"
+with c3:
+    if st.button("📌 Tasks"): st.session_state.active_tool = "reminder"
+with c4:
+    if st.button("🧠 AI Tutor"): st.session_state.active_tool = "ai_search"
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # Active Tool Panes
-if st.session_state.active_tool == "ai_search":
+if st.session_state.active_tool == "ai_search" or st.session_state.active_tool is None:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("🤖 Smart Socratic AI Tutor")
-    if user_query:
-        query_smarter_ai(user_query)
-    else:
-        q_input = st.text_area("Type your question here:", placeholder="e.g. How do I solve x^2 - 4 = 0?")
-        if st.button("Get Socratic Hints"):
-            if q_input:
-                query_smarter_ai(q_input)
+    q_input = st.text_input("Ask any homework question:", placeholder="e.g. How do I solve x^2 - 4 = 0?")
+    if st.button("Get AI Guidance"):
+        if q_input:
+            query_smarter_ai(q_input)
     st.markdown("</div>", unsafe_allow_html=True)
 
 elif st.session_state.active_tool == "camera":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("📷 Homework Camera Scanner")
-    img_file = st.camera_input("Capture picture")
+    img_file = st.camera_input("Take a picture of your assignment")
     if img_file is not None:
-        st.image(img_file, caption="Captured Homework Image", use_column_width=True)
-        notes = st.text_input("Add details about what you need help with:")
-        if st.button("Analyze Question"):
-            query_smarter_ai(f"Homework photo context: {notes if notes else 'Explain how to solve this step by step.'}")
+        st.image(img_file, caption="Captured Homework", use_column_width=True)
+        notes = st.text_input("What do you need help with on this photo?")
+        if st.button("Analyze Photo"):
+            query_smarter_ai(
+                f"Homework photo context: {notes if notes else 'Explain how to solve this problem step by step.'}")
     st.markdown("</div>", unsafe_allow_html=True)
 
 elif st.session_state.active_tool == "alarm":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("⏰ Study Alarm & Timer")
-    timer_seconds = st.number_input("Set Timer Duration (Seconds):", min_value=5, max_value=3600, value=10, step=5)
-    if st.button("Start Timer"):
-        st.warning(f"Timer running for {timer_seconds} seconds!")
+    st.subheader("⏰ Focus Study Timer")
+    minutes = st.number_input("Study Duration (Minutes):", min_value=1, max_value=180, value=25)
+    if st.button("Start Countdown"):
+        total_seconds = int(minutes * 60)
         progress_bar = st.progress(0)
         timer_text = st.empty()
-        for i in range(timer_seconds, 0, -1):
-            timer_text.markdown(f"### ⏳ Time Remaining: `{i}` seconds")
-            progress_bar.progress((timer_seconds - i + 1) / timer_seconds)
+        for i in range(total_seconds, 0, -1):
+            mins, secs = divmod(i, 60)
+            timer_text.markdown(f"### ⏳ Time Remaining: `{mins:02d}:{secs:02d}`")
+            progress_bar.progress((total_seconds - i + 1) / total_seconds)
             time.sleep(1)
-        timer_text.markdown("### 🔔 Time's Up!")
+        timer_text.markdown("### 🔔 Time's Up! Take a break!")
         st.balloons()
-        st.audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg", autoplay=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 elif st.session_state.active_tool == "reminder":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("📌 Saved Assignments & Reminders")
+    st.subheader("📌 Assignments & Due Dates")
 
-    col_in, col_add = st.columns([3, 1])
-    with col_in:
-        new_task = st.text_input("New Task", label_visibility="collapsed", placeholder="Enter assignment...")
-    with col_add:
-        if st.button("Add"):
-            if new_task:
-                add_user_task(user_email, new_task)
-                st.rerun()
+    new_task = st.text_input("Task Name", placeholder="e.g. Math Homework Chapter 3")
+    col_d, col_t = st.columns(2)
+    with col_d:
+        due_date = st.date_input("Due Date")
+    with col_t:
+        due_time = st.time_input("Due Time")
+
+    if st.button("Add Assignment"):
+        if new_task:
+            add_user_task(user_email, new_task, due_date, due_time)
+            st.success("Added task successfully!")
+            st.rerun()
 
     st.write("---")
-    st.write("### Your Saved Tasks (Database Synced):")
-
+    st.write("### Your Saved Tasks:")
     saved_tasks = get_user_tasks(user_email)
     if not saved_tasks:
-        st.info("No reminders saved yet! Add one above.")
+        st.info("No reminders saved yet!")
     else:
         for t in saved_tasks:
             c1, c2 = st.columns([4, 1])
             with c1:
-                is_done = st.checkbox(t["task"], value=t["done"], key=f"db_chk_{t['id']}")
-                if is_done != t["done"]:
-                    update_task_status(t["id"], is_done)
+                is_done = st.checkbox(f"**{t['task']}** (Due: {t['due_date']} at {t['due_time']})", value=t['done'],
+                                      key=f"chk_{t['id']}")
+                if is_done != t['done']:
+                    update_task_status(t['id'], is_done)
                     st.rerun()
             with c2:
-                if st.button("🗑️", key=f"db_del_{t['id']}"):
-                    delete_user_task(t["id"])
+                if st.button("🗑️", key=f"del_{t['id']}"):
+                    delete_user_task(t['id'])
                     st.rerun()
-
     st.markdown("</div>", unsafe_allow_html=True)

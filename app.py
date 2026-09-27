@@ -76,7 +76,7 @@ with tab2:
             with st.spinner("AI is thinking..."):
                 try:
                     response = client.chat.completions.create(
-                        model="meta-llama/llama-3.2-3b-instruct:free",
+                        model="meta-llama/llama-3.1-8b-instruct:free",
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_question}

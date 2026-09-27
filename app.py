@@ -110,7 +110,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- USER AUTHENTICATION GATE ---
-# Check if Streamlit OAuth user is logged in
+# Safely handle Streamlit user object across versions
 user = getattr(st, "user", None)
 is_logged_in = getattr(user, "is_logged_in", False) if user else False
 
@@ -123,16 +123,15 @@ if not is_logged_in:
     st.markdown("<div class='card' style='text-align: center;'>", unsafe_allow_html=True)
     st.subheader("Welcome Back! 👋")
     st.write("Sign in with Google to sync your study schedule and reminders across all devices.")
-    if st.button("🌐 Sign in with Google"):
-        if hasattr(st, "login"):
-            st.login("google")
-        else:
-            st.info("Google OAuth login initialized. Add your Google Client credentials to Streamlit Secrets.")
+
+    # Native Google OAuth callback trigger
+    st.button("🌐 Sign in with Google", on_click=st.login, args=["google"])
+
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
-# --- MAIN DASHBOARD (FOR LOGGED IN USERS) ---
-user_email = getattr(user, "email", "guest_user@tasktrack.ai")
+# --- MAIN DASHBOARD (LOGGED IN USER) ---
+user_email = getattr(user, "email", "guest@tasktrack.ai")
 user_name = getattr(user, "name", "Student")
 
 st.markdown("<div style='text-align: center; font-size: 50px;'>⬛🔲</div>", unsafe_allow_html=True)
@@ -140,24 +139,22 @@ st.markdown("<h1 class='app-title'>TaskTrack</h1>", unsafe_allow_html=True)
 st.markdown(f"<p class='app-subtitle'>Welcome, {user_name}! | Let us help you solve your homework</p>",
             unsafe_allow_html=True)
 
-# Top Bar Logout Option
+# Top Bar Account Info & Logout
 col_usr, col_logout = st.columns([3, 1])
 with col_usr:
     st.caption(f"Logged in as: `{user_email}`")
 with col_logout:
-    if st.button("Log out"):
-        if hasattr(st, "logout"):
-            st.logout()
+    st.button("Log out", on_click=st.logout)
 
 if "active_tool" not in st.session_state:
     st.session_state.active_tool = None
 
 
-# Socratic AI Query Helper
+# Smart Socratic AI Query Helper
 def query_smarter_ai(prompt_text):
     api_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        st.error("API Key missing! Please configure secrets.toml.")
+        st.error("API Key missing! Please configure secrets in Streamlit Cloud.")
         return
     with st.spinner("🧠 Smart Socratic AI is breaking down your question..."):
         try:
@@ -189,7 +186,7 @@ with col_btn:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 2x2 Grid Buttons
+# 2x2 Tool Grid
 row1_col1, row1_col2 = st.columns(2)
 with row1_col1:
     if st.button("📷 Camera"):
@@ -208,7 +205,7 @@ with row2_col2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- ACTIVE TOOL DISPLAY ---
+# --- ACTIVE TOOL INTERACTION ---
 
 if st.session_state.active_tool == "ai_search":
     st.markdown("<div class='card'>", unsafe_allow_html=True)

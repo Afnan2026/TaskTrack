@@ -123,8 +123,8 @@ if not st.session_state.user_email:
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("Welcome! 👋")
-    name_input = st.text_input("Your Name:", placeholder="e.g. Afnan")
-    email_input = st.text_input("Your Email:", placeholder="e.g. afnan@gmail.com")
+    name_input = st.text_input("Your Name:", placeholder="e.g. John Doe")
+    email_input = st.text_input("Your Email (where reminders will be sent):", placeholder="e.g. student@gmail.com")
 
     if st.button("🚀 Enter TaskTrack"):
         if name_input and email_input:

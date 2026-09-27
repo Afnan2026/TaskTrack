@@ -2,7 +2,7 @@ import os
 import sqlite3
 import time
 import streamlit as st
-import openai
+from authlib.integrations.streamlit_client import OAuth
 
 # Page Configuration
 st.set_page_config(page_title="TaskTrack AI", page_icon="📚", layout="centered")
@@ -57,8 +57,17 @@ def update_task_status(task_id, done):
     conn.close()
 
 
-# Initialize DB on load
 init_db()
+
+# --- AUTHLIB DIRECT OAUTH INITIALIZATION ---
+oauth = OAuth()
+oauth.register(
+    name="google",
+    client_id=st.secrets["auth"]["google"]["client_id"],
+    client_secret=st.secrets["auth"]["google"]["client_secret"],
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
 
 # Custom Light Gray App Lab Styling
 st.markdown("""
@@ -109,12 +118,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- USER AUTHENTICATION GATE ---
-# Safely handle Streamlit user object across versions
-user = getattr(st, "user", None)
-is_logged_in = getattr(user, "is_logged_in", False) if user else False
+# Handle Auth Redirect Callback
+if "user" not in st.session_state:
+    st.session_state.user = None
 
-if not is_logged_in:
+# Process Google Callback Code
+token = oauth.google.authorize_access_token()
+if token and "userinfo" in token:
+    st.session_state.user = token["userinfo"]
+
+# --- LOGIN GATE ---
+if not st.session_state.user:
     st.markdown("<div style='text-align: center; font-size: 55px;'>⬛🔲</div>", unsafe_allow_html=True)
     st.markdown("<h1 class='app-title'>TaskTrack AI</h1>", unsafe_allow_html=True)
     st.markdown("<p class='app-subtitle'>Please sign in to access your saved assignments & tools</p>",
@@ -124,33 +138,38 @@ if not is_logged_in:
     st.subheader("Welcome Back! 👋")
     st.write("Sign in with Google to sync your study schedule and reminders across all devices.")
 
-    # Native Google OAuth callback trigger
-    st.button("🌐 Sign in with Google", on_click=st.login, args=["google"])
+    redirect_uri = "https://tasktrack-ai.streamlit.app/oauth2callback"
+    auth_url = oauth.google.authorize_redirect(redirect_uri)
+    st.markdown(
+        f'<a href="{auth_url}" target="_self"><button style="background: linear-gradient(180deg, #ffb700 0%, #e6a100 100%); color: white; font-weight: bold; border: none; padding: 14px 20px; border-radius: 12px; width: 100%; cursor: pointer; font-size: 1.1rem;">🌐 Sign in with Google</button></a>',
+        unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 # --- MAIN DASHBOARD (LOGGED IN USER) ---
-user_email = getattr(user, "email", "guest@tasktrack.ai")
-user_name = getattr(user, "name", "Student")
+user_info = st.session_state.user
+user_email = user_info.get("email", "guest@tasktrack.ai")
+user_name = user_info.get("name", "Student")
 
 st.markdown("<div style='text-align: center; font-size: 50px;'>⬛🔲</div>", unsafe_allow_html=True)
 st.markdown("<h1 class='app-title'>TaskTrack</h1>", unsafe_allow_html=True)
 st.markdown(f"<p class='app-subtitle'>Welcome, {user_name}! | Let us help you solve your homework</p>",
             unsafe_allow_html=True)
 
-# Top Bar Account Info & Logout
 col_usr, col_logout = st.columns([3, 1])
 with col_usr:
     st.caption(f"Logged in as: `{user_email}`")
 with col_logout:
-    st.button("Log out", on_click=st.logout)
+    if st.button("Log out"):
+        st.session_state.user = None
+        st.rerun()
 
 if "active_tool" not in st.session_state:
     st.session_state.active_tool = None
 
 
-# Smart Socratic AI Query Helper
+# Socratic AI Helper
 def query_smarter_ai(prompt_text):
     api_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -158,6 +177,7 @@ def query_smarter_ai(prompt_text):
         return
     with st.spinner("🧠 Smart Socratic AI is breaking down your question..."):
         try:
+            import openai
             client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
             response = client.chat.completions.create(
                 model="openrouter/auto",
@@ -173,7 +193,6 @@ def query_smarter_ai(prompt_text):
             st.error(f"Error reaching AI service: {e}")
 
 
-# Search Bar Section
 st.write("**TaskTrack AI:**")
 col_search, col_btn = st.columns([3, 1])
 with col_search:
@@ -205,8 +224,7 @@ with row2_col2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- ACTIVE TOOL INTERACTION ---
-
+# Active Tool Panes
 if st.session_state.active_tool == "ai_search":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("🤖 Smart Socratic AI Tutor")

@@ -8,7 +8,7 @@ import openai
 st.set_page_config(page_title="TaskTrack AI", page_icon="📚", layout="centered")
 
 
-# --- DATABASE SETUP (Persistent Storage with Dates & Times) ---
+# --- DATABASE SETUP ---
 def init_db():
     conn = sqlite3.connect("tasktrack.db")
     c = conn.cursor()
@@ -160,8 +160,7 @@ if "active_tool" not in st.session_state:
 def query_smarter_ai(prompt_text):
     api_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        st.error(
-            "⚠️ OpenRouter API Key missing! Go to Streamlit Cloud -> Settings -> Secrets and add OPENROUTER_API_KEY = 'your_key'.")
+        st.error("⚠️ OpenRouter API Key missing! Check Streamlit Secrets.")
         return
     with st.spinner("🧠 Smart Socratic AI is breaking down your question..."):
         try:
@@ -209,7 +208,7 @@ elif st.session_state.active_tool == "camera":
     st.subheader("📷 Homework Camera Scanner")
     img_file = st.camera_input("Take a picture of your assignment")
     if img_file is not None:
-        st.image(img_file, caption="Captured Homework", use_column_width=True)
+        st.image(img_file, caption="Captured Homework", use_container_width=True)
         notes = st.text_input("What do you need help with on this photo?")
         if st.button("Analyze Photo"):
             query_smarter_ai(

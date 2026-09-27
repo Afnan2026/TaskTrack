@@ -109,7 +109,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- USER AUTHENTICATION GATE ---
-if not st.experimental_user.is_logged_in:
+# Check if user is logged in using st.user or st.session_state
+user_obj = getattr(st, "user", None) or getattr(st, "experimental_user", None)
+is_logged_in = getattr(user_obj, "is_logged_in", False) if user_obj else False
+
+if not is_logged_in:
     st.markdown("<div style='text-align: center; font-size: 55px;'>⬛🔲</div>", unsafe_allow_html=True)
     st.markdown("<h1 class='app-title'>TaskTrack AI</h1>", unsafe_allow_html=True)
     st.markdown("<p class='app-subtitle'>Please sign in to access your saved assignments & tools</p>",
@@ -119,20 +123,28 @@ if not st.experimental_user.is_logged_in:
     st.subheader("Welcome Back! 👋")
     st.write("Sign in with Google to sync your study schedule and reminders across all devices.")
 
-    st.button("🌐 Sign in with Google", on_click=st.login, args=["google"])
+    # Use standard st.login
+    if st.button("🌐 Sign in with Google"):
+        st.login("google")
 
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 # --- MAIN DASHBOARD (LOGGED IN USER) ---
-user_email = st.experimental_user.email
-user_name = getattr(st.experimental_user, "name", "Student")
+user_email = getattr(user_obj, "email", "student@tasktrack.ai")
+user_name = getattr(user_obj, "name", "Student")
 
 st.markdown("<div style='text-align: center; font-size: 50px;'>⬛🔲</div>", unsafe_allow_html=True)
 st.markdown("<h1 class='app-title'>TaskTrack</h1>", unsafe_allow_html=True)
 st.markdown(f"<p class='app-subtitle'>Welcome, {user_name}! | Let us help you solve your homework</p>",
             unsafe_allow_html=True)
 
+col_usr, col_logout = st.columns([3, 1])
+with col_usr:
+    st.caption(f"Logged in as: `{user_email}`")
+with col_logout:
+    if st.button("Log out"):
+        st.logout()
 col_usr, col_logout = st.columns([3, 1])
 with col_usr:
     st.caption(f"Logged in as: `{user_email}`")
